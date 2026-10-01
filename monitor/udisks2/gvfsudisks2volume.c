@@ -1391,6 +1391,24 @@ on_mount_operation_aborted (GMountOperation       *mount_operation,
 }
 
 static gboolean
+has_clear_key (UDisksEncrypted *encrypted)
+{
+  GVariant *val;
+  gboolean clear_key = FALSE;
+
+  if (encrypted == NULL)
+    return FALSE;
+
+  val = g_dbus_proxy_get_cached_property (G_DBUS_PROXY (encrypted), "ClearKey");
+  if (val != NULL)
+    {
+      clear_key = g_variant_get_boolean (val);
+      g_variant_unref (val);
+    }
+  return clear_key;
+}
+
+static gboolean
 has_crypttab_passphrase (GTask *task)
 {
   GVfsUDisks2Volume *volume = g_task_get_source_object (task);
@@ -1460,8 +1478,13 @@ do_unlock (GTask *task)
 
   if (data->passphrase == NULL)
     {
+      /* If the volume has an on-disk Clear Key (pre-provisioned BitLocker), unlock automatically */
+      if (has_clear_key (data->encrypted_to_unlock))
+        {
+          data->passphrase = g_strdup ("");
+        }
       /* If the passphrase is in the crypttab file, no need to ask the user, just use a blank passphrase */
-      if (has_crypttab_passphrase (task))
+      else if (has_crypttab_passphrase (task))
         {
           data->passphrase = g_strdup ("");
         }
